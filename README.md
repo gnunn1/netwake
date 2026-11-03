@@ -106,3 +106,8 @@ Covers MAC parsing, magic packet structure, actually sending a packet over UDP, 
 
 - `ssh2` lists `cpu-features` as an optional native dependency. If it fails to build, npm carries on and `ssh2` uses its pure-JavaScript implementations; nothing needs to be done.
 - SSH passwords and private keys are stored in Homey's device settings.
+
+## License
+
+[MIT](LICENSE)
+
