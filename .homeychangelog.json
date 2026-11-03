@@ -1,0 +1,5 @@
+{
+  "1.0.0": {
+    "en": "Initial release: wake a server with Wake-on-LAN, shut it down over SSH, and monitor its power state."
+  }
+}

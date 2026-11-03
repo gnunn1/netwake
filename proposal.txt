@@ -1,0 +1,12 @@
+The ServerWOL Homey application provides the following functionality:
+
+* The ability to wake a computer using the wake-on-lan magic packet for a specified MAC address
+* Monitor the power status of the computer using a provided IP address. The polling interval for checking the power status is configurable in seconds
+* The ability to shutdown the computer using a built-in standard command sent via SSH based on the operating system with the user configuring whether the computer is Windows, MacOS or Linux
+* The user needs to be able to configure a username for SSH
+* The user needs to be able to configure the type of authentication to use for SSH: Password or certificate
+* If SSH authentication is set to password, show a single line masked text entry for the password.
+* If SSH authentication is set to certificate, show a multi line text entry for the certificate.
+* The application should support a power toggle quick action
+* The application should support actions for "Turn server on", "Turn server off" and "Toggle power state"\
+* The application needs to be written in typescript

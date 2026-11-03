@@ -1,0 +1,33 @@
+{
+  "name": {
+    "en": "Server"
+  },
+  "class": "other",
+  "capabilities": ["onoff"],
+  "capabilitiesOptions": {
+    "onoff": {
+      "title": {
+        "en": "Power"
+      },
+      "insightsTitleTrue": {
+        "en": "Server turned on"
+      },
+      "insightsTitleFalse": {
+        "en": "Server turned off"
+      },
+      "uiQuickAction": true
+    }
+  },
+  "platforms": ["local"],
+  "connectivity": ["lan"],
+  "images": {
+    "small": "/drivers/server/assets/images/small.png",
+    "large": "/drivers/server/assets/images/large.png",
+    "xlarge": "/drivers/server/assets/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "configure"
+    }
+  ]
+}

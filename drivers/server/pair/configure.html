@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script type="text/javascript" src="/homey.js" data-origin="pair"></script>
+  <style type="text/css">
+    .section-title {
+      margin: 24px 0 8px;
+      font-weight: 600;
+    }
+
+    .section-title:first-child {
+      margin-top: 0;
+    }
+
+    .field-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .field-row > .homey-form-group {
+      flex: 1;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #result {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #result.ok {
+      background: rgba(46, 125, 111, 0.15);
+    }
+
+    #result.fail {
+      background: rgba(208, 70, 70, 0.15);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .button-row > button {
+      flex: 1;
+    }
+  </style>
+</head>
+
+<body>
+  <form id="form" onsubmit="return false;">
+    <div class="section-title">Server</div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="name">Name</label>
+      <input class="homey-form-input" id="name" type="text" placeholder="My Server" value="My Server" />
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="mac_address">MAC address</label>
+      <input class="homey-form-input" id="mac_address" type="text" placeholder="00:1A:2B:3C:4D:5E"
+        autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <p class="homey-form-hint">The adapter that Wake-on-LAN is enabled on.</p>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="ip_address">IP address</label>
+      <input class="homey-form-input" id="ip_address" type="text" placeholder="192.168.1.10"
+        autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <p class="homey-form-hint">Used to monitor the power state and to connect over SSH.</p>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="os_type">Operating system</label>
+      <select class="homey-form-select" id="os_type">
+        <option value="windows">Windows</option>
+        <option value="macos">macOS</option>
+        <option value="linux" selected>Linux</option>
+      </select>
+      <p class="homey-form-hint">Determines the shutdown command sent over SSH.</p>
+    </div>
+
+    <div class="section-title">Power state monitoring</div>
+
+    <div class="field-row">
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="poll_interval">Polling interval (seconds)</label>
+        <input class="homey-form-input" id="poll_interval" type="number" min="5" max="3600" step="1" value="30" />
+      </div>
+
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="status_port">Status check port</label>
+        <input class="homey-form-input" id="status_port" type="number" min="1" max="65535" step="1" value="22" />
+      </div>
+    </div>
+
+    <p class="homey-form-hint">
+      The server counts as on when a TCP connection to the status check port succeeds.
+    </p>
+
+    <div class="section-title">Wake-on-LAN</div>
+
+    <div class="field-row">
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="broadcast_address">Broadcast address</label>
+        <input class="homey-form-input" id="broadcast_address" type="text" value="255.255.255.255"
+          autocapitalize="off" autocorrect="off" spellcheck="false" />
+      </div>
+
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="wol_port">Port</label>
+        <input class="homey-form-input" id="wol_port" type="number" min="1" max="65535" step="1" value="9" />
+      </div>
+    </div>
+
+    <div class="section-title">SSH</div>
+
+    <div class="field-row">
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="ssh_username">Username</label>
+        <input class="homey-form-input" id="ssh_username" type="text" autocapitalize="off" autocorrect="off"
+          spellcheck="false" />
+      </div>
+
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="ssh_port">Port</label>
+        <input class="homey-form-input" id="ssh_port" type="number" min="1" max="65535" step="1" value="22" />
+      </div>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="ssh_auth_type">Authentication</label>
+      <select class="homey-form-select" id="ssh_auth_type">
+        <option value="password" selected>Password</option>
+        <option value="certificate">Certificate</option>
+      </select>
+    </div>
+
+    <div class="homey-form-group" id="group_password">
+      <label class="homey-form-label" for="ssh_password">Password</label>
+      <input class="homey-form-input" id="ssh_password" type="password" autocapitalize="off" autocorrect="off"
+        spellcheck="false" />
+    </div>
+
+    <div class="homey-form-group hidden" id="group_certificate">
+      <label class="homey-form-label" for="ssh_private_key">Certificate (private key)</label>
+      <textarea class="homey-form-textarea" id="ssh_private_key" rows="10" autocapitalize="off" autocorrect="off"
+        spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"></textarea>
+      <p class="homey-form-hint">Paste the complete private key, including the BEGIN and END lines.</p>
+    </div>
+
+    <div class="homey-form-group hidden" id="group_passphrase">
+      <label class="homey-form-label" for="ssh_passphrase">Certificate passphrase</label>
+      <input class="homey-form-input" id="ssh_passphrase" type="password" autocapitalize="off" autocorrect="off"
+        spellcheck="false" />
+      <p class="homey-form-hint">Leave empty if the private key is not encrypted.</p>
+    </div>
+
+    <div class="button-row">
+      <button class="homey-button-secondary-full" id="btn_test" type="button">Test connection</button>
+      <button class="homey-button-primary-full" id="btn_add" type="button">Add server</button>
+    </div>
+
+    <div id="result" class="hidden"></div>
+  </form>
+
+  <script type="text/javascript">
+    const FIELDS = [
+      'name',
+      'mac_address',
+      'ip_address',
+      'os_type',
+      'poll_interval',
+      'status_port',
+      'broadcast_address',
+      'wol_port',
+      'ssh_username',
+      'ssh_port',
+      'ssh_auth_type',
+      'ssh_password',
+      'ssh_private_key',
+      'ssh_passphrase',
+    ];
+
+    const NUMERIC_FIELDS = ['poll_interval', 'status_port', 'wol_port', 'ssh_port'];
+
+    const el = (id) => document.getElementById(id);
+
+    /** Shows only the credential field that matches the selected auth type. */
+    function updateAuthVisibility() {
+      const isCertificate = el('ssh_auth_type').value === 'certificate';
+
+      el('group_password').classList.toggle('hidden', isCertificate);
+      el('group_certificate').classList.toggle('hidden', !isCertificate);
+      el('group_passphrase').classList.toggle('hidden', !isCertificate);
+    }
+
+    function collect() {
+      const config = {};
+
+      FIELDS.forEach((id) => {
+        const value = el(id).value;
+        config[id] = NUMERIC_FIELDS.indexOf(id) !== -1 ? Number.parseInt(value, 10) : value;
+      });
+
+      return config;
+    }
+
+    function showResult(message, ok) {
+      const result = el('result');
+      result.textContent = message;
+      result.classList.remove('hidden', 'ok', 'fail');
+      result.classList.add(ok ? 'ok' : 'fail');
+    }
+
+    function setBusy(busy) {
+      el('btn_test').disabled = busy;
+      el('btn_add').disabled = busy;
+      Homey.showLoadingOverlay(busy);
+    }
+
+    function errorMessage(err) {
+      if (!err) return 'Unknown error';
+      return err.message || String(err);
+    }
+
+    async function testConnection() {
+      setBusy(true);
+
+      try {
+        const config = collect();
+        const status = await Homey.emit('test_status', config);
+
+        if (!status.online) {
+          showResult(
+            'The server did not answer on '
+            + config.ip_address + ':' + config.status_port + '.\n'
+            + 'That is expected when it is switched off. SSH cannot be tested now; '
+            + 'you can still add the server and test later.',
+            false,
+          );
+          return;
+        }
+
+        await Homey.emit('test_ssh', config);
+        showResult('The server answered and the SSH credentials are valid.', true);
+      } catch (err) {
+        showResult(errorMessage(err), false);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function addDevice() {
+      setBusy(true);
+
+      try {
+        const device = await Homey.emit('build_device', collect());
+        await Homey.createDevice(device);
+        Homey.done();
+      } catch (err) {
+        showResult(errorMessage(err), false);
+        setBusy(false);
+      }
+    }
+
+    el('ssh_auth_type').addEventListener('change', updateAuthVisibility);
+    el('btn_test').addEventListener('click', testConnection);
+    el('btn_add').addEventListener('click', addDevice);
+
+    updateAuthVisibility();
+
+    Homey.setTitle('Configure server');
+    Homey.ready();
+  </script>
+</body>
+
+</html>

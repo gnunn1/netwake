@@ -1,0 +1,27 @@
+{
+  "name": "com.gnunn.netwake",
+  "version": "1.0.0",
+  "description": "Wake a server with Wake-on-LAN and shut it down over SSH from Homey.",
+  "main": "app.js",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test test/",
+    "validate": "homey app validate --level=publish"
+  },
+  "dependencies": {
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
+    "@types/node": "^18.19.64",
+    "@types/ssh2": "^1.15.1",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

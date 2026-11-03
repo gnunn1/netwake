@@ -1,0 +1,9 @@
+{
+  "error": {
+    "invalid_mac": "Enter a valid MAC address, for example 00:1A:2B:3C:4D:5E.",
+    "no_ip": "Enter the IP address or hostname of the server.",
+    "no_username": "Enter the username to log in with over SSH.",
+    "no_password": "Enter the SSH password, or switch authentication to Certificate.",
+    "no_certificate": "Paste the SSH private key, or switch authentication to Password."
+  }
+}

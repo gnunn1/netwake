@@ -1,0 +1,256 @@
+[
+  {
+    "type": "group",
+    "label": {
+      "en": "Network"
+    },
+    "children": [
+      {
+        "id": "mac_address",
+        "type": "text",
+        "label": {
+          "en": "MAC address"
+        },
+        "value": "",
+        "hint": {
+          "en": "The MAC address of the network adapter that Wake-on-LAN is enabled on, for example 00:1A:2B:3C:4D:5E."
+        },
+        "highlight": true
+      },
+      {
+        "id": "ip_address",
+        "type": "text",
+        "label": {
+          "en": "IP address"
+        },
+        "value": "",
+        "hint": {
+          "en": "The IP address or hostname of the server. Used to monitor the power state and to connect over SSH. A static IP or DHCP reservation is strongly recommended."
+        },
+        "highlight": true
+      },
+      {
+        "id": "broadcast_address",
+        "type": "text",
+        "label": {
+          "en": "Broadcast address"
+        },
+        "value": "255.255.255.255",
+        "hint": {
+          "en": "Where the magic packet is sent. Use the broadcast address of the server's subnet (for example 192.168.1.255) if your router does not forward 255.255.255.255."
+        }
+      },
+      {
+        "id": "wol_port",
+        "type": "number",
+        "label": {
+          "en": "Wake-on-LAN port"
+        },
+        "value": 9,
+        "min": 1,
+        "max": 65535,
+        "step": 1,
+        "hint": {
+          "en": "The UDP port the magic packet is sent to. 9 (discard) is the default; some adapters use 7."
+        }
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Power state monitoring"
+    },
+    "children": [
+      {
+        "id": "poll_interval",
+        "type": "number",
+        "label": {
+          "en": "Polling interval"
+        },
+        "value": 30,
+        "min": 5,
+        "max": 3600,
+        "step": 1,
+        "units": {
+          "en": "seconds"
+        },
+        "hint": {
+          "en": "How often the power state of the server is checked."
+        }
+      },
+      {
+        "id": "status_port",
+        "type": "number",
+        "label": {
+          "en": "Status check port"
+        },
+        "value": 22,
+        "min": 1,
+        "max": 65535,
+        "step": 1,
+        "hint": {
+          "en": "The server is considered on when a TCP connection to this port on its IP address succeeds. Defaults to the SSH port."
+        }
+      },
+      {
+        "id": "status_timeout",
+        "type": "number",
+        "label": {
+          "en": "Status check timeout"
+        },
+        "value": 3,
+        "min": 1,
+        "max": 30,
+        "step": 1,
+        "units": {
+          "en": "seconds"
+        },
+        "hint": {
+          "en": "How long to wait for the status check to connect before considering the server off."
+        }
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Operating system"
+    },
+    "children": [
+      {
+        "id": "os_type",
+        "type": "dropdown",
+        "label": {
+          "en": "Operating system"
+        },
+        "value": "linux",
+        "values": [
+          {
+            "id": "windows",
+            "label": {
+              "en": "Windows"
+            }
+          },
+          {
+            "id": "macos",
+            "label": {
+              "en": "macOS"
+            }
+          },
+          {
+            "id": "linux",
+            "label": {
+              "en": "Linux"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Determines the shutdown command that is sent over SSH."
+        },
+        "highlight": true
+      },
+      {
+        "id": "shutdown_command",
+        "type": "text",
+        "label": {
+          "en": "Custom shutdown command"
+        },
+        "value": "",
+        "hint": {
+          "en": "Optional. Leave empty to use the built-in command for the selected operating system. Windows: shutdown /s /t 0 /f — macOS and Linux: sudo -n /sbin/shutdown -h now"
+        }
+      }
+    ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "SSH"
+    },
+    "children": [
+      {
+        "id": "ssh_port",
+        "type": "number",
+        "label": {
+          "en": "SSH port"
+        },
+        "value": 22,
+        "min": 1,
+        "max": 65535,
+        "step": 1
+      },
+      {
+        "id": "ssh_username",
+        "type": "text",
+        "label": {
+          "en": "Username"
+        },
+        "value": "",
+        "hint": {
+          "en": "The user account used to log in over SSH. It must be allowed to run the shutdown command."
+        },
+        "highlight": true
+      },
+      {
+        "id": "ssh_auth_type",
+        "type": "dropdown",
+        "label": {
+          "en": "Authentication"
+        },
+        "value": "password",
+        "values": [
+          {
+            "id": "password",
+            "label": {
+              "en": "Password"
+            }
+          },
+          {
+            "id": "certificate",
+            "label": {
+              "en": "Certificate"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Choose Password to authenticate with the account password, or Certificate to authenticate with a private key. Only the matching field below is used."
+        },
+        "highlight": true
+      },
+      {
+        "id": "ssh_password",
+        "type": "password",
+        "label": {
+          "en": "Password"
+        },
+        "value": "",
+        "hint": {
+          "en": "Only used when Authentication is set to Password."
+        }
+      },
+      {
+        "id": "ssh_private_key",
+        "type": "textarea",
+        "label": {
+          "en": "Certificate (private key)"
+        },
+        "value": "",
+        "hint": {
+          "en": "Only used when Authentication is set to Certificate. Paste the complete OpenSSH private key, including the BEGIN and END lines."
+        }
+      },
+      {
+        "id": "ssh_passphrase",
+        "type": "password",
+        "label": {
+          "en": "Certificate passphrase"
+        },
+        "value": "",
+        "hint": {
+          "en": "Only used when Authentication is set to Certificate. Leave empty if the private key is not encrypted."
+        }
+      }
+    ]
+  }
+]
