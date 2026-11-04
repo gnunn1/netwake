@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <!--
+    App settings pages ARE loaded in their own iframe, so unlike a pair view
+    they do need /homey.js. `data-origin="settings"` pulls in /js/homey.settings.js,
+    which provides Homey.get/set and loads Homey's own stylesheet.
+  -->
+  <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
+
+  <style type="text/css">
+    /*
+      Colours and spacing come from Homey's own tokens so the page matches the
+      surrounding chrome. Homey ships light surfaces only, so there is no dark
+      mode here on purpose: a dark panel inside light chrome reads as broken.
+    */
+    body {
+      margin: 0;
+      padding: var(--homey-su-2, 16px);
+      color: var(--homey-color-text, #181818);
+    }
+
+    .intro {
+      margin: 0 0 var(--homey-su-3, 24px);
+      color: var(--homey-color-text-light, #939496);
+    }
+
+    .server {
+      border: 1px solid var(--homey-color-line, #dddee2);
+      border-radius: var(--homey-border-radius, 10px);
+      background: var(--homey-color-component, #ffffff);
+      padding: var(--homey-su-2, 16px);
+      margin-bottom: var(--homey-su-2, 16px);
+    }
+
+    .server-name {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 var(--homey-su-2, 16px);
+    }
+
+    /* KPI row: the two stat tiles sit side by side and stack when narrow. */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--homey-su-2, 16px);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      line-height: 16px;
+      color: var(--homey-color-text-light, #939496);
+      margin-bottom: 4px;
+    }
+
+    /*
+      Standalone stat values use the font's default proportional figures;
+      tabular-nums is for columns of numbers that must align vertically.
+    */
+    .stat-value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 28px;
+      line-height: 34px;
+      font-weight: 600;
+    }
+
+    /*
+      The status dot is a mark, never the carrier of meaning: it sits next to a
+      written "On" / "Off", because #3fc700 does not clear 3:1 against white.
+      Filled vs hollow gives a second, non-colour channel on top of the word.
+    */
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex: none;
+    }
+
+    .dot.on {
+      background: var(--homey-color-green, #3fc700);
+    }
+
+    .dot.off {
+      border: 2px solid var(--homey-color-mono-40, #939496);
+      box-sizing: border-box;
+    }
+
+    .tracking {
+      margin: var(--homey-su-2, 16px) 0 0;
+      font-size: 13px;
+      line-height: 16px;
+      color: var(--homey-color-text-light, #939496);
+    }
+
+    .notice {
+      color: var(--homey-color-text-light, #939496);
+    }
+
+    .notice.error {
+      color: var(--homey-color-text-danger, #d81c1d);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="homey-header">
+    <h1 class="homey-title">Statistics</h1>
+  </div>
+
+  <p class="intro">Power state and accumulated uptime for each paired server.</p>
+
+  <div id="content">
+    <p class="notice">Loading…</p>
+  </div>
+
+  <script type="text/javascript">
+    /** How often a fresh snapshot is pulled from the app. */
+    const REFRESH_MS = 5000;
+
+    /** How often the displayed uptime is recomputed, so it ticks live. */
+    const TICK_MS = 1000;
+
+    let homey = null;
+    let snapshot = null;
+
+    /**
+     * Homey's clock minus this browser's clock, in milliseconds.
+     *
+     * Timestamps in the snapshot come from Homey, so comparing them against a
+     * browser `Date.now()` would bake in any skew between the two machines.
+     */
+    let clockOffset = 0;
+
+    const el = (id) => document.getElementById(id);
+
+    /** Mirror of formatDuration() in lib/uptime.ts; keep the two in step. */
+    function formatDuration(ms) {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      if (days > 0) return days + 'd ' + hours + 'h';
+      if (hours > 0) return hours + 'h ' + minutes + 'm';
+      if (minutes > 0) return minutes + 'm ' + seconds + 's';
+
+      return seconds + 's';
+    }
+
+    function formatDate(ms) {
+      if (!Number.isFinite(ms)) return 'unknown';
+      return new Date(ms).toLocaleDateString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+    }
+
+    /** Homey's current time, corrected for any clock difference. */
+    function homeyNow() {
+      return Date.now() - clockOffset;
+    }
+
+    /**
+     * The uptime to show right now.
+     *
+     * `totalMs` is only accurate up to `lastSampleAt`, so while the server is
+     * on, the stretch since that sample is added here. That lets the value tick
+     * every second without asking the app for a new snapshot.
+     */
+    function liveUptimeMs(server) {
+      const pending = server.isOn
+        ? Math.max(0, homeyNow() - server.lastSampleAt)
+        : 0;
+
+      return (server.totalMs || 0) + pending;
+    }
+
+    function tile(label, build) {
+      const wrap = document.createElement('div');
+
+      const labelEl = document.createElement('div');
+      labelEl.className = 'stat-label';
+      labelEl.textContent = label;
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'stat-value';
+      build(valueEl);
+
+      wrap.appendChild(labelEl);
+      wrap.appendChild(valueEl);
+      return wrap;
+    }
+
+    function renderServer(server) {
+      const card = document.createElement('div');
+      card.className = 'server';
+
+      const name = document.createElement('h2');
+      name.className = 'server-name';
+      // textContent, not innerHTML: the name is user supplied.
+      name.textContent = server.name;
+      card.appendChild(name);
+
+      const stats = document.createElement('div');
+      stats.className = 'stats';
+
+      stats.appendChild(tile('Power status', (valueEl) => {
+        const dot = document.createElement('span');
+        dot.className = 'dot ' + (server.isOn ? 'on' : 'off');
+        dot.setAttribute('aria-hidden', 'true');
+
+        const text = document.createElement('span');
+        text.textContent = server.available
+          ? (server.isOn ? 'On' : 'Off')
+          : 'Unavailable';
+
+        valueEl.appendChild(dot);
+        valueEl.appendChild(text);
+      }));
+
+      stats.appendChild(tile('Total uptime', (valueEl) => {
+        const text = document.createElement('span');
+        text.className = 'uptime';
+        text.dataset.id = server.id;
+        text.textContent = formatDuration(liveUptimeMs(server));
+        valueEl.appendChild(text);
+      }));
+
+      card.appendChild(stats);
+
+      const tracking = document.createElement('p');
+      tracking.className = 'tracking';
+      tracking.textContent = 'Tracking since ' + formatDate(server.trackingSince);
+      card.appendChild(tracking);
+
+      return card;
+    }
+
+    function render() {
+      const content = el('content');
+      content.textContent = '';
+
+      const servers = (snapshot && snapshot.servers) || [];
+
+      if (servers.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'notice';
+        empty.textContent = 'No servers paired yet. Add one from Devices to start collecting statistics.';
+        content.appendChild(empty);
+        return;
+      }
+
+      servers.forEach((server) => content.appendChild(renderServer(server)));
+    }
+
+    /** Updates just the uptime values, so the text ticks without a full redraw. */
+    function tick() {
+      const servers = (snapshot && snapshot.servers) || [];
+      if (servers.length === 0) return;
+
+      const byId = {};
+      servers.forEach((server) => { byId[server.id] = server; });
+
+      document.querySelectorAll('.uptime').forEach((node) => {
+        const server = byId[node.dataset.id];
+        if (server) {
+          node.textContent = formatDuration(liveUptimeMs(server));
+        }
+      });
+    }
+
+    async function refresh() {
+      try {
+        const next = await homey.get('stats');
+        const fetchedAt = Date.now();
+
+        if (!next || !Array.isArray(next.servers)) {
+          // The app has not published a snapshot yet (no devices, or it is
+          // still starting up). Show the empty state rather than an error.
+          snapshot = { generatedAt: fetchedAt, servers: [] };
+          clockOffset = 0;
+        } else {
+          snapshot = next;
+          clockOffset = fetchedAt - next.generatedAt;
+        }
+
+        render();
+      } catch (err) {
+        const content = el('content');
+        content.textContent = '';
+
+        const error = document.createElement('p');
+        error.className = 'notice error';
+        error.textContent = 'Could not load statistics: ' + ((err && err.message) || err);
+        content.appendChild(error);
+      }
+    }
+
+    function onHomeyReady(Homey) {
+      homey = Homey;
+
+      // Settings pages must signal readiness before Homey shows the frame.
+      Homey.ready();
+
+      refresh();
+      setInterval(refresh, REFRESH_MS);
+      setInterval(tick, TICK_MS);
+    }
+  </script>
+</body>
+
+</html>

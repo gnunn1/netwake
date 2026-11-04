@@ -1,0 +1,27 @@
+{
+  "type": "enum",
+  "title": {
+    "en": "Power status"
+  },
+  "desc": {
+    "en": "Whether the server currently answers on its status port."
+  },
+  "values": [
+    {
+      "id": "on",
+      "title": {
+        "en": "On"
+      }
+    },
+    {
+      "id": "off",
+      "title": {
+        "en": "Off"
+      }
+    }
+  ],
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "icon": "/assets/capabilities/power.svg"
+}

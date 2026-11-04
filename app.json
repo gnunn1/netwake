@@ -107,7 +107,9 @@
       },
       "class": "other",
       "capabilities": [
-        "onoff"
+        "onoff",
+        "server_power",
+        "server_uptime"
       ],
       "capabilitiesOptions": {
         "onoff": {
@@ -397,5 +399,54 @@
         }
       ]
     }
-  ]
+  ],
+  "capabilities": {
+    "server_power": {
+      "type": "enum",
+      "title": {
+        "en": "Power status"
+      },
+      "desc": {
+        "en": "Whether the server currently answers on its status port."
+      },
+      "values": [
+        {
+          "id": "on",
+          "title": {
+            "en": "On"
+          }
+        },
+        {
+          "id": "off",
+          "title": {
+            "en": "Off"
+          }
+        }
+      ],
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "icon": "/assets/capabilities/power.svg"
+    },
+    "server_uptime": {
+      "type": "number",
+      "title": {
+        "en": "Total uptime"
+      },
+      "desc": {
+        "en": "Hours the server has been powered on since tracking began."
+      },
+      "units": {
+        "en": "h"
+      },
+      "decimals": 1,
+      "min": 0,
+      "chartType": "stepLine",
+      "insights": true,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "icon": "/assets/capabilities/uptime.svg"
+    }
+  }
 }

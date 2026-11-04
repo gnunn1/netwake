@@ -5,7 +5,33 @@ import {
   type SshConfig, shutdown, testConnection,
 } from '../../lib/ssh';
 import { DEFAULT_SETTINGS, type ServerSettings } from '../../lib/types';
+import {
+  createUptimeState, recordSample, reviveUptimeState, totalUptimeMs,
+  type ServerStats, type UptimeState,
+} from '../../lib/uptime';
 import { isValidMac, wake } from '../../lib/wol';
+
+/** The device store key the uptime bookkeeping is persisted under. */
+const UPTIME_STORE_KEY = 'uptime';
+
+/**
+ * How often the running total is written to the device store while the power
+ * state is unchanged. Every state change is persisted immediately regardless,
+ * so this only bounds how much uptime a sudden restart can lose.
+ */
+const UPTIME_PERSIST_MS = 60 * 1000;
+
+/** The part of the app class this device calls back into. */
+interface StatsPublisher {
+  refreshStats(): void;
+}
+
+/**
+ * Read-only capabilities that surface the statistics on the device's own
+ * measurements tab. Devices paired before these existed are migrated in
+ * `onInit`, since Homey does not add new capabilities retroactively.
+ */
+const STATS_CAPABILITIES = ['server_power', 'server_uptime'] as const;
 
 /**
  * How long after a wake or shutdown the device polls at an increased rate, so
@@ -27,7 +53,20 @@ module.exports = class ServerDevice extends Homey.Device {
   /** The state we are driving towards during a transition, if any. */
   private expectedState: boolean | null = null;
 
+  /** Running uptime bookkeeping, restored from the device store on init. */
+  private uptime: UptimeState = createUptimeState(Date.now());
+
+  /** When the uptime state was last written to the device store. */
+  private uptimePersistedAt = 0;
+
   override async onInit(): Promise<void> {
+    const now = Date.now();
+    this.uptime = reviveUptimeState(this.getStoreValue(UPTIME_STORE_KEY), now);
+    this.uptimePersistedAt = now;
+
+    await this.migrateCapabilities();
+    await this.updateStatsCapabilities();
+
     this.registerCapabilityListener('onoff', async (value: boolean) => {
       if (value) {
         await this.turnOn();
@@ -37,6 +76,10 @@ module.exports = class ServerDevice extends Homey.Device {
     });
 
     this.schedulePoll(0);
+
+    // Publish straight away so the statistics page has this device as soon as
+    // it comes up, rather than waiting for the app's refresh interval.
+    this.publishStats();
 
     this.log(`${this.getName()} initialized`);
   }
@@ -146,6 +189,91 @@ module.exports = class ServerDevice extends Homey.Device {
   }
 
   // ---------------------------------------------------------------------------
+  // Uptime statistics
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Folds one power-state observation into the running uptime total.
+   *
+   * The total is kept in memory and flushed to the device store on every state
+   * change, and otherwise at most once per `UPTIME_PERSIST_MS`, so a 5 second
+   * poll interval does not turn into a write every 5 seconds.
+   */
+  private async recordUptimeSample(isOn: boolean): Promise<void> {
+    const now = Date.now();
+    const wasOn = this.uptime.onSince !== null;
+
+    this.uptime = recordSample(this.uptime, isOn, now);
+
+    await this.updateStatsCapabilities();
+
+    const stateChanged = wasOn !== isOn;
+
+    if (stateChanged || now - this.uptimePersistedAt >= UPTIME_PERSIST_MS) {
+      this.uptimePersistedAt = now;
+      await this.setStoreValue(UPTIME_STORE_KEY, this.uptime)
+        .catch((err) => this.error('Failed to persist uptime:', err));
+    }
+
+    if (stateChanged) {
+      this.publishStats();
+    }
+  }
+
+  /** Adds the statistics capabilities to devices paired before they existed. */
+  private async migrateCapabilities(): Promise<void> {
+    for (const capability of STATS_CAPABILITIES) {
+      if (!this.hasCapability(capability)) {
+        await this.addCapability(capability)
+          .catch((err) => this.error(`Failed to add \`${capability}\`:`, err));
+      }
+    }
+  }
+
+  /**
+   * Mirrors the running totals onto the device's read-only capabilities, which
+   * is what puts them on the measurements tab and into Insights.
+   */
+  private async updateStatsCapabilities(): Promise<void> {
+    const isOn = this.uptime.onSince !== null;
+    const hours = totalUptimeMs(this.uptime, Date.now()) / 3_600_000;
+
+    if (this.hasCapability('server_power')) {
+      await this.setCapabilityValue('server_power', isOn ? 'on' : 'off')
+        .catch((err) => this.error(err));
+    }
+
+    if (this.hasCapability('server_uptime')) {
+      // Rounded to the capability's own precision so Insights does not record
+      // a change on every poll when nothing meaningful moved.
+      await this.setCapabilityValue('server_uptime', Math.round(hours * 10) / 10)
+        .catch((err) => this.error(err));
+    }
+  }
+
+  /** Asks the app to rebuild the snapshot the statistics page reads. */
+  private publishStats(): void {
+    const app = this.homey.app as unknown as Partial<StatsPublisher> | undefined;
+
+    if (typeof app?.refreshStats === 'function') {
+      app.refreshStats();
+    }
+  }
+
+  /** The current statistics for this device, for the app to aggregate. */
+  getStats(): ServerStats {
+    return {
+      id: this.getData().id ?? this.getName(),
+      name: this.getName(),
+      available: this.getAvailable(),
+      isOn: this.uptime.onSince !== null,
+      totalMs: this.uptime.totalMs,
+      lastSampleAt: this.uptime.lastSampleAt,
+      trackingSince: this.uptime.trackingSince,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Power state monitoring
   // ---------------------------------------------------------------------------
 
@@ -212,11 +340,19 @@ module.exports = class ServerDevice extends Homey.Device {
       const settings = this.settings;
 
       if (!settings.ip_address) {
+        // Close any open uptime session rather than leaving the clock running:
+        // without an address the server cannot be observed, and resuming later
+        // would otherwise credit the whole unobserved gap as uptime.
+        await this.recordUptimeSample(false);
         await this.setUnavailable(this.homey.__('error.no_ip')).catch((err) => this.error(err));
         return;
       }
 
       const isOn = await this.readPowerState();
+
+      // Uptime follows what the network actually reported, not the value shown
+      // on the tile, which is held at the expected state during a transition.
+      await this.recordUptimeSample(isOn);
 
       if (!this.getAvailable()) {
         await this.setAvailable().catch((err) => this.error(err));

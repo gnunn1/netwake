@@ -12,6 +12,13 @@ const { describe, it } = require('node:test');
 const { createMagicPacket, isValidMac, normalizeMac, wake } = require('../.homeybuild/lib/wol');
 const { getShutdownCommand, SHUTDOWN_COMMANDS } = require('../.homeybuild/lib/ssh');
 const { isReachable } = require('../.homeybuild/lib/status');
+const {
+  createUptimeState,
+  formatDuration,
+  recordSample,
+  reviveUptimeState,
+  totalUptimeMs,
+} = require('../.homeybuild/lib/uptime');
 
 describe('normalizeMac', () => {
   it('accepts colon, dash and bare notation', () => {
@@ -104,5 +111,127 @@ describe('isReachable', () => {
 
   it('is false when no host is configured', async () => {
     assert.equal(await isReachable('', 22, 1000), false);
+  });
+});
+
+describe('recordSample', () => {
+  const T0 = 1_700_000_000_000;
+
+  it('counts nothing while the server stays off', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, false, T0 + 30_000);
+    state = recordSample(state, false, T0 + 60_000);
+
+    assert.equal(state.totalMs, 0);
+    assert.equal(state.onSince, null);
+  });
+
+  it('accumulates the interval between two samples that saw the server on', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, true, T0 + 10_000);
+    assert.equal(state.totalMs, 0, 'the stretch before it came on does not count');
+    assert.equal(state.onSince, T0 + 10_000);
+
+    state = recordSample(state, true, T0 + 40_000);
+    assert.equal(state.totalMs, 30_000);
+    assert.equal(state.onSince, T0 + 10_000, 'the session start is preserved');
+  });
+
+  it('closes the session and clears onSince when the server goes off', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, true, T0 + 10_000);
+    state = recordSample(state, false, T0 + 70_000);
+
+    assert.equal(state.totalMs, 60_000);
+    assert.equal(state.onSince, null);
+  });
+
+  it('counts each power cycle separately', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, true, T0 + 1_000);
+    state = recordSample(state, false, T0 + 11_000);
+    state = recordSample(state, true, T0 + 21_000);
+    state = recordSample(state, true, T0 + 26_000);
+
+    assert.equal(state.totalMs, 15_000);
+  });
+
+  it('ignores a clock that jumps backwards', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, true, T0 + 10_000);
+    state = recordSample(state, true, T0 - 5_000);
+
+    assert.equal(state.totalMs, 0);
+  });
+});
+
+describe('totalUptimeMs', () => {
+  const T0 = 1_700_000_000_000;
+
+  it('extrapolates past the last sample while the server is on', () => {
+    let state = createUptimeState(T0);
+    state = recordSample(state, true, T0);
+
+    assert.equal(totalUptimeMs(state, T0 + 5_000), 5_000);
+  });
+
+  it('stays flat once the server is off', () => {
+    let state = createUptimeState(T0);
+    state = recordSample(state, true, T0);
+    state = recordSample(state, false, T0 + 5_000);
+
+    assert.equal(totalUptimeMs(state, T0 + 60_000), 5_000);
+  });
+});
+
+describe('reviveUptimeState', () => {
+  const T0 = 1_700_000_000_000;
+
+  it('starts fresh when there is nothing stored', () => {
+    const state = reviveUptimeState(undefined, T0);
+
+    assert.equal(state.totalMs, 0);
+    assert.equal(state.onSince, null);
+    assert.equal(state.trackingSince, T0);
+  });
+
+  it('does not credit time while the app was not running', () => {
+    const stored = {
+      totalMs: 1_000, onSince: T0 - 500_000, lastSampleAt: T0 - 500_000, trackingSince: T0 - 900_000,
+    };
+    const state = reviveUptimeState(stored, T0);
+
+    assert.equal(state.lastSampleAt, T0, 'resumes sampling from now');
+    assert.equal(totalUptimeMs(state, T0), 1_000);
+    assert.equal(state.trackingSince, T0 - 900_000, 'tracking start is preserved');
+  });
+
+  it('falls back to sane values for a corrupt store', () => {
+    const state = reviveUptimeState({ totalMs: 'nope', onSince: {}, trackingSince: null }, T0);
+
+    assert.equal(state.totalMs, 0);
+    assert.equal(state.onSince, null);
+    assert.equal(state.trackingSince, T0);
+  });
+});
+
+describe('formatDuration', () => {
+  it('renders two units, largest first', () => {
+    assert.equal(formatDuration(0), '0s');
+    assert.equal(formatDuration(45_000), '45s');
+    assert.equal(formatDuration(90_000), '1m 30s');
+    assert.equal(formatDuration(3_600_000), '1h 0m');
+    assert.equal(formatDuration(3_900_000), '1h 5m');
+    assert.equal(formatDuration(86_400_000), '1d 0h');
+    assert.equal(formatDuration(275_400_000), '3d 4h');
+  });
+
+  it('clamps a negative duration to zero', () => {
+    assert.equal(formatDuration(-5_000), '0s');
   });
 });
