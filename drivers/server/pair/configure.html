@@ -2,7 +2,12 @@
 <html>
 
 <head>
-  <script type="text/javascript" src="/homey.js" data-origin="pair"></script>
+  <!--
+    Do NOT include /homey.js here. Pair views are injected into the pairing
+    wizard's own page (jQuery .html()), which already exposes a fully built
+    `Homey` object. Loading /homey.js again declares a global `function Homey()`
+    that overwrites it, and then 404s on /js/homey.pair.js.
+  -->
   <style type="text/css">
     .section-title {
       margin: 24px 0 8px;
@@ -224,7 +229,14 @@
     function setBusy(busy) {
       el('btn_test').disabled = busy;
       el('btn_add').disabled = busy;
-      Homey.showLoadingOverlay(busy);
+
+      // showLoadingOverlay([message]) / hideLoadingOverlay() are separate calls;
+      // passing a boolean would show the overlay in both cases.
+      if (busy) {
+        Homey.showLoadingOverlay();
+      } else {
+        Homey.hideLoadingOverlay();
+      }
     }
 
     function errorMessage(err) {
@@ -233,9 +245,9 @@
     }
 
     async function testConnection() {
-      setBusy(true);
-
       try {
+        setBusy(true);
+
         const config = collect();
         const status = await Homey.emit('test_status', config);
 
@@ -260,9 +272,9 @@
     }
 
     async function addDevice() {
-      setBusy(true);
-
       try {
+        setBusy(true);
+
         const device = await Homey.emit('build_device', collect());
         await Homey.createDevice(device);
         Homey.done();
@@ -278,8 +290,8 @@
 
     updateAuthVisibility();
 
+    // The pairing wizard owns the ready handshake, so no Homey.ready() here.
     Homey.setTitle('Configure server');
-    Homey.ready();
   </script>
 </body>
 
