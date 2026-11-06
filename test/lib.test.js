@@ -14,6 +14,7 @@ const { getShutdownCommand, SHUTDOWN_COMMANDS } = require('../.homeybuild/lib/ss
 const { isReachable } = require('../.homeybuild/lib/status');
 const {
   createUptimeState,
+  currentUptimeMs,
   formatDuration,
   recordSample,
   reviveUptimeState,
@@ -158,6 +159,22 @@ describe('recordSample', () => {
     state = recordSample(state, true, T0 + 26_000);
 
     assert.equal(state.totalMs, 15_000);
+    assert.equal(state.currentMs, 5_000, 'only the latest power cycle');
+  });
+
+  it('resets the current stretch when the server goes off', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, true, T0 + 10_000);
+    state = recordSample(state, true, T0 + 40_000);
+    assert.equal(state.currentMs, 30_000);
+
+    state = recordSample(state, false, T0 + 70_000);
+    assert.equal(state.currentMs, 0, 'cleared the moment the server is seen off');
+    assert.equal(state.totalMs, 60_000, 'the total keeps the stretch');
+
+    state = recordSample(state, false, T0 + 100_000);
+    assert.equal(state.currentMs, 0, 'stays at zero while it remains off');
   });
 
   it('ignores a clock that jumps backwards', () => {
@@ -189,6 +206,44 @@ describe('totalUptimeMs', () => {
   });
 });
 
+describe('currentUptimeMs', () => {
+  const T0 = 1_700_000_000_000;
+
+  it('is zero while the server has never been seen on', () => {
+    const state = createUptimeState(T0);
+
+    assert.equal(currentUptimeMs(state, T0 + 60_000), 0);
+  });
+
+  it('extrapolates past the last sample while the server is on', () => {
+    let state = createUptimeState(T0);
+    state = recordSample(state, true, T0);
+
+    assert.equal(currentUptimeMs(state, T0 + 5_000), 5_000);
+  });
+
+  it('is zero again once the server goes off', () => {
+    let state = createUptimeState(T0);
+    state = recordSample(state, true, T0);
+    state = recordSample(state, false, T0 + 5_000);
+
+    assert.equal(currentUptimeMs(state, T0 + 60_000), 0);
+    assert.equal(totalUptimeMs(state, T0 + 60_000), 5_000, 'the total is unaffected');
+  });
+
+  it('restarts from the latest power on, while the total keeps running', () => {
+    let state = createUptimeState(T0);
+
+    state = recordSample(state, true, T0);
+    state = recordSample(state, true, T0 + 20_000);
+    state = recordSample(state, false, T0 + 30_000);
+    state = recordSample(state, true, T0 + 40_000);
+
+    assert.equal(currentUptimeMs(state, T0 + 50_000), 10_000);
+    assert.equal(totalUptimeMs(state, T0 + 50_000), 40_000);
+  });
+});
+
 describe('reviveUptimeState', () => {
   const T0 = 1_700_000_000_000;
 
@@ -202,19 +257,45 @@ describe('reviveUptimeState', () => {
 
   it('does not credit time while the app was not running', () => {
     const stored = {
-      totalMs: 1_000, onSince: T0 - 500_000, lastSampleAt: T0 - 500_000, trackingSince: T0 - 900_000,
+      totalMs: 1_000,
+      currentMs: 800,
+      onSince: T0 - 500_000,
+      lastSampleAt: T0 - 500_000,
+      trackingSince: T0 - 900_000,
     };
     const state = reviveUptimeState(stored, T0);
 
     assert.equal(state.lastSampleAt, T0, 'resumes sampling from now');
     assert.equal(totalUptimeMs(state, T0), 1_000);
+    assert.equal(currentUptimeMs(state, T0), 800, 'the in-progress stretch continues');
     assert.equal(state.trackingSince, T0 - 900_000, 'tracking start is preserved');
   });
 
+  it('keeps the current stretch at zero when the server was off', () => {
+    const stored = {
+      totalMs: 1_000, currentMs: 800, onSince: null, trackingSince: T0 - 900_000,
+    };
+    const state = reviveUptimeState(stored, T0);
+
+    assert.equal(state.currentMs, 0);
+    assert.equal(currentUptimeMs(state, T0 + 60_000), 0);
+  });
+
+  it('restarts the current stretch for a store written before it was tracked', () => {
+    const stored = { totalMs: 1_000, onSince: T0 - 500_000, trackingSince: T0 - 900_000 };
+    const state = reviveUptimeState(stored, T0);
+
+    assert.equal(state.currentMs, 0);
+    assert.equal(state.totalMs, 1_000, 'the total survives the upgrade');
+  });
+
   it('falls back to sane values for a corrupt store', () => {
-    const state = reviveUptimeState({ totalMs: 'nope', onSince: {}, trackingSince: null }, T0);
+    const state = reviveUptimeState({
+      totalMs: 'nope', currentMs: 'nope', onSince: {}, trackingSince: null,
+    }, T0);
 
     assert.equal(state.totalMs, 0);
+    assert.equal(state.currentMs, 0);
     assert.equal(state.onSince, null);
     assert.equal(state.trackingSince, T0);
   });

@@ -12,6 +12,11 @@
 export interface UptimeState {
   /** Milliseconds the server was observed powered on, counted up to `lastSampleAt`. */
   totalMs: number;
+  /**
+   * Milliseconds of the *current* powered-on stretch, counted up to
+   * `lastSampleAt`. Reset to zero as soon as the server is observed off.
+   */
+  currentMs: number;
   /** When the current powered-on stretch began, or `null` while the server is off. */
   onSince: number | null;
   /** When the power state was last sampled. */
@@ -29,6 +34,8 @@ export interface ServerStats {
   isOn: boolean;
   /** Uptime accumulated up to `lastSampleAt`; the page extrapolates from there. */
   totalMs: number;
+  /** Uptime of the current powered-on stretch, on the same basis as `totalMs`. */
+  currentMs: number;
   lastSampleAt: number;
   trackingSince: number;
 }
@@ -50,6 +57,7 @@ function finiteNumber(value: unknown, fallback: number): number {
 export function createUptimeState(now: number): UptimeState {
   return {
     totalMs: 0,
+    currentMs: 0,
     onSince: null,
     lastSampleAt: now,
     trackingSince: now,
@@ -72,10 +80,15 @@ export function reviveUptimeState(raw: unknown, now: number): UptimeState {
 
   const stored = raw as Record<string, unknown>;
   const onSince = finiteNumber(stored['onSince'], Number.NaN);
+  const isOn = Number.isFinite(onSince);
 
   return {
     totalMs: Math.max(0, finiteNumber(stored['totalMs'], 0)),
-    onSince: Number.isFinite(onSince) ? onSince : null,
+    // The current stretch only exists while the server is on. A store written
+    // before this field existed has no `currentMs`, so an in-progress stretch
+    // restarts from zero rather than being lost outright.
+    currentMs: isOn ? Math.max(0, finiteNumber(stored['currentMs'], 0)) : 0,
+    onSince: isOn ? onSince : null,
     lastSampleAt: now,
     trackingSince: finiteNumber(stored['trackingSince'], now),
   };
@@ -89,23 +102,42 @@ export function reviveUptimeState(raw: unknown, now: number): UptimeState {
  * whole interval credited to it, which over-counts by at most one poll interval
  * per power cycle — negligible next to the default 30 second poll, and far
  * simpler than trying to guess the moment it actually went down.
+ *
+ * The current-stretch counter follows the same interval accounting as the
+ * total, except that observing the server off clears it: it always measures
+ * the time since the server was last seen coming up.
  */
 export function recordSample(state: UptimeState, isOn: boolean, now: number): UptimeState {
   const wasOn = state.onSince !== null;
   const elapsed = Math.max(0, now - state.lastSampleAt);
+  const counted = wasOn ? elapsed : 0;
 
   return {
-    totalMs: state.totalMs + (wasOn ? elapsed : 0),
+    totalMs: state.totalMs + counted,
+    currentMs: isOn ? state.currentMs + counted : 0,
     onSince: isOn ? (state.onSince ?? now) : null,
     lastSampleAt: now,
     trackingSince: state.trackingSince,
   };
 }
 
+/** Milliseconds elapsed since the last sample that still count as uptime. */
+function pendingMs(state: UptimeState, now: number): number {
+  return state.onSince !== null ? Math.max(0, now - state.lastSampleAt) : 0;
+}
+
 /** The total uptime including the stretch since the last sample, when still on. */
 export function totalUptimeMs(state: UptimeState, now: number): number {
-  const pending = state.onSince !== null ? Math.max(0, now - state.lastSampleAt) : 0;
-  return state.totalMs + pending;
+  return state.totalMs + pendingMs(state, now);
+}
+
+/**
+ * Uptime of the current powered-on stretch, including the time since the last
+ * sample. Zero whenever the server is off.
+ */
+export function currentUptimeMs(state: UptimeState, now: number): number {
+  if (state.onSince === null) return 0;
+  return state.currentMs + pendingMs(state, now);
 }
 
 /**

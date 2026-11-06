@@ -6,7 +6,7 @@ import {
 } from '../../lib/ssh';
 import { DEFAULT_SETTINGS, type ServerSettings } from '../../lib/types';
 import {
-  createUptimeState, recordSample, reviveUptimeState, totalUptimeMs,
+  createUptimeState, currentUptimeMs, recordSample, reviveUptimeState, totalUptimeMs,
   type ServerStats, type UptimeState,
 } from '../../lib/uptime';
 import { isValidMac, wake } from '../../lib/wol';
@@ -31,7 +31,7 @@ interface StatsPublisher {
  * measurements tab. Devices paired before these existed are migrated in
  * `onInit`, since Homey does not add new capabilities retroactively.
  */
-const STATS_CAPABILITIES = ['server_power', 'server_uptime'] as const;
+const STATS_CAPABILITIES = ['server_power', 'server_current_uptime', 'server_uptime'] as const;
 
 /**
  * How long after a wake or shutdown the device polls at an increased rate, so
@@ -235,18 +235,25 @@ module.exports = class ServerDevice extends Homey.Device {
    * is what puts them on the measurements tab and into Insights.
    */
   private async updateStatsCapabilities(): Promise<void> {
+    const now = Date.now();
     const isOn = this.uptime.onSince !== null;
-    const hours = totalUptimeMs(this.uptime, Date.now()) / 3_600_000;
+
+    // Rounded to the capabilities' own precision so Insights does not record a
+    // change on every poll when nothing meaningful moved.
+    const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10;
 
     if (this.hasCapability('server_power')) {
       await this.setCapabilityValue('server_power', isOn ? 'on' : 'off')
         .catch((err) => this.error(err));
     }
 
+    if (this.hasCapability('server_current_uptime')) {
+      await this.setCapabilityValue('server_current_uptime', hours(currentUptimeMs(this.uptime, now)))
+        .catch((err) => this.error(err));
+    }
+
     if (this.hasCapability('server_uptime')) {
-      // Rounded to the capability's own precision so Insights does not record
-      // a change on every poll when nothing meaningful moved.
-      await this.setCapabilityValue('server_uptime', Math.round(hours * 10) / 10)
+      await this.setCapabilityValue('server_uptime', hours(totalUptimeMs(this.uptime, now)))
         .catch((err) => this.error(err));
     }
   }
@@ -268,6 +275,7 @@ module.exports = class ServerDevice extends Homey.Device {
       available: this.getAvailable(),
       isOn: this.uptime.onSince !== null,
       totalMs: this.uptime.totalMs,
+      currentMs: this.uptime.currentMs,
       lastSampleAt: this.uptime.lastSampleAt,
       trackingSince: this.uptime.trackingSince,
     };

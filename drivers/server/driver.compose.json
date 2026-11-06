@@ -3,7 +3,7 @@
     "en": "Server"
   },
   "class": "other",
-  "capabilities": ["onoff", "server_power", "server_uptime"],
+  "capabilities": ["onoff", "server_power", "server_current_uptime", "server_uptime"],
   "capabilitiesOptions": {
     "onoff": {
       "title": {

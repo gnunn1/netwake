@@ -109,6 +109,7 @@
       "capabilities": [
         "onoff",
         "server_power",
+        "server_current_uptime",
         "server_uptime"
       ],
       "capabilitiesOptions": {
@@ -401,6 +402,26 @@
     }
   ],
   "capabilities": {
+    "server_current_uptime": {
+      "type": "number",
+      "title": {
+        "en": "Current uptime"
+      },
+      "desc": {
+        "en": "Hours the server has been powered on since it was last turned on. Resets to zero whenever the server goes off."
+      },
+      "units": {
+        "en": "h"
+      },
+      "decimals": 1,
+      "min": 0,
+      "chartType": "stepLine",
+      "insights": true,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "icon": "/assets/capabilities/uptime.svg"
+    },
     "server_power": {
       "type": "enum",
       "title": {

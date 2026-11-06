@@ -40,7 +40,7 @@
       margin: 0 0 var(--homey-su-2, 16px);
     }
 
-    /* KPI row: the two stat tiles sit side by side and stack when narrow. */
+    /* KPI row: the stat tiles sit side by side and stack when narrow. */
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -165,18 +165,25 @@
     }
 
     /**
-     * The uptime to show right now.
+     * The uptime to show right now, for either counter.
      *
-     * `totalMs` is only accurate up to `lastSampleAt`, so while the server is
-     * on, the stretch since that sample is added here. That lets the value tick
-     * every second without asking the app for a new snapshot.
+     * The accumulated value is only accurate up to `lastSampleAt`, so while the
+     * server is on, the stretch since that sample is added here. That lets the
+     * value tick every second without asking the app for a new snapshot.
+     *
+     * @param kind 'total' for uptime since tracking began, 'current' for the
+     *   time since the server was last turned on (zero while it is off).
      */
-    function liveUptimeMs(server) {
+    function liveUptimeMs(server, kind) {
+      if (kind === 'current' && !server.isOn) return 0;
+
       const pending = server.isOn
         ? Math.max(0, homeyNow() - server.lastSampleAt)
         : 0;
 
-      return (server.totalMs || 0) + pending;
+      const base = (kind === 'current' ? server.currentMs : server.totalMs) || 0;
+
+      return base + pending;
     }
 
     function tile(label, build) {
@@ -222,13 +229,16 @@
         valueEl.appendChild(text);
       }));
 
-      stats.appendChild(tile('Total uptime', (valueEl) => {
-        const text = document.createElement('span');
-        text.className = 'uptime';
-        text.dataset.id = server.id;
-        text.textContent = formatDuration(liveUptimeMs(server));
-        valueEl.appendChild(text);
-      }));
+      [['Current uptime', 'current'], ['Total uptime', 'total']].forEach(([label, kind]) => {
+        stats.appendChild(tile(label, (valueEl) => {
+          const text = document.createElement('span');
+          text.className = 'uptime';
+          text.dataset.id = server.id;
+          text.dataset.kind = kind;
+          text.textContent = formatDuration(liveUptimeMs(server, kind));
+          valueEl.appendChild(text);
+        }));
+      });
 
       card.appendChild(stats);
 
@@ -268,7 +278,7 @@
       document.querySelectorAll('.uptime').forEach((node) => {
         const server = byId[node.dataset.id];
         if (server) {
-          node.textContent = formatDuration(liveUptimeMs(server));
+          node.textContent = formatDuration(liveUptimeMs(server, node.dataset.kind));
         }
       });
     }
